@@ -91,16 +91,15 @@ recode_dta <- function(dta=NA) #in case we want sumstats on whole pop
                                         IOUTCOME == 6 ~ "No",
                                         TRUE ~ "NA"),
            industry_job = case_when(INDS07M %in% c(18,19) ~ 18, # group R arts and S other services, together
-                                    TRUE ~ INDS07M), 
-           # occ_job = floor(!!sym(soc_var)/1000), # forcing a one-digit SOC code
-           # occ_job_two = floor(!!sym(soc_var)/100), # forcing a two-digit SOC code 
+                                    TRUE ~ INDS07M),
            employed=case_when(ILODEFR==1 ~ 1,
                               is.na(ILODEFR) | ILODEFR %in% c(-9,-8,4) ~ NA_real_,
                               TRUE ~ 0),
            unemployed=case_when(ILODEFR==2 ~ 1,
-                                is.na(ILODEFR) | ILODEFR %in% c(-9,-8,3,4) ~ NA_real_, # no inactive
+                                is.na(ILODEFR) | ILODEFR %in% c(-9,-8,3,4) ~ NA_real_, # no inactive or u16
                                 TRUE ~ 0),
            inactive=case_when(ILODEFR==3 ~ 1,
+                              is.na(ILODEFR) | ILODEFR %in% c(-9,-8,4) ~ NA_real_, #exclude u16s
                               TRUE ~ 0),
            econ_active=case_when(ILODEFR %in% c(1,2) ~ 1,
                                  is.na(ILODEFR) | ILODEFR %in% c(-9,-8,4) ~ NA_real_,
@@ -331,16 +330,30 @@ align_vars <- function(dta=NULL){
   
   # For occupations
   if (dta_year_check>=2021) {
-    soc_var <- "SC20MMJ"
+    soc_var_1d <- "SC20MMJ"
+    soc_var_3d <- "SC20MMN"
   } else if (between(dta_year_check,2015,2020)) {
-    soc_var <- "SC10MMJ"
+    soc_var_1d <- "SC10MMJ"
+    soc_var_3d <- "SC10MMN"
   }
   
   dta_convert <- dta %>% 
     mutate(lev_quals = !!sym(quals_var),
-           soc_1d = !!sym(soc_var))
+           soc_1d = !!sym(soc_var_1d),
+           soc_3d = !!sym(soc_var_3d))
   
   return(dta_convert)
+}
+
+# Create a made-up ID reference number as some datasets do not have them
+create_id_ref <- function(dta=NULL) {
+  
+  # Only create if there is no
+  dta_with_ref <- dta %>% 
+    mutate(alt_id_ref = row_number())
+  
+  return(dta_with_ref)
+  
 }
 
 # Collapse data to summarise by demography, using weights
@@ -457,4 +470,60 @@ svyglm_regress <- function(reg_model_vars=NULL,
                             formula = reg_form)
   
   return(reg_emp_results)
+}
+
+
+# Econ status sumstat
+# Choose between employment, unemployment or inactivity rates
+# Then assign a vector of variables to cut by, e.g. demography and geography
+# Will produce a dataset with rates and number of observations
+
+summarise_econ_stat <- function(data = NULL,
+                                econ_status = NULL,
+                                adult_only = TRUE,
+                                ldn_only = TRUE,
+                                var_vector = NULL) {
+  
+  checkmate::assert_logical(adult_only)
+  checkmate::assert_logical(ldn_only)
+  checkmate::assert_choice(econ_status, c("unemployed","employed","inactive"))
+  checkmate::assert_vector(var_vector)
+  
+  # Ensure correct filters are on
+  if (adult_only==TRUE) {
+    data_temp <- data %>% 
+      filter(adult1664 == 1)
+  } else {
+    data_temp <- data
+  }
+  
+  if (ldn_only==TRUE) {
+    data_temp <- data_temp %>% 
+      filter(london_resident == 1)
+  } else {
+    data_temp <- data_temp
+  }
+  
+  # Calculate the rate with appropriate uncertainty bounds
+  subtab <- data_temp %>% 
+    filter(!!sym(econ_status) %in% c(0,1)) %>% 
+    group_by(across(all_of(var_vector))) %>% 
+    summarise(survey_mean(!!sym(econ_status),
+                          vartype = "ci"))
+  
+  # Simple aggregate counts of unweighted and weighted
+  subtab_count <- data_temp %>% 
+    filter(!!sym(econ_status) %in% c(0,1)) %>% #only econ active
+    group_by(!!sym(econ_status),across(all_of(var_vector))) %>% 
+    summarise(sum_obs_wt=sum(weight_val),
+              sum_obs=n()) %>% 
+    pivot_wider(names_from = !!sym(econ_status),
+                values_from = c(sum_obs_wt,sum_obs))
+  
+  # Merge two datasets
+  outtab <- subtab %>% 
+    left_join(subtab_count,
+              by=c((all_of(var_vector))))
+  
+  return(outtab)
 }
