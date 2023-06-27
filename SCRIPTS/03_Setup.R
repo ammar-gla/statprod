@@ -34,7 +34,7 @@ dataset_list_adj <- dataset_list %>%
   lapply(convert_to_label,var_vec=label_var_vec) %>% 
   lapply(haven::zap_labels) %>% 
   lapply(recode_dta) %>% 
-  lapply(select,c(analysis_var_vec,paste(label_var_vec,"_label",sep=""))) %>% 
+  lapply(select,all_of(c(analysis_var_vec,paste(label_var_vec,"_label",sep="")))) %>% 
   lapply(create_id_ref)
 
 # To save space, remove original dataset list
