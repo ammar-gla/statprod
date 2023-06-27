@@ -74,7 +74,7 @@ import_save_dta <- function(dta_num=NA,
 
 # Function to adjust the data for our use, inspired by previous SPS code
 recode_dta <- function(dta=NA) #in case we want sumstats on whole pop 
-  {
+{
   # Check year and set SOC var accordingly
   dta_year_check <- dta %>% 
     group_by(dta_year) %>% 
@@ -125,18 +125,19 @@ recode_dta <- function(dta=NA) #in case we want sumstats on whole pop
                                   DISEA == 1 ~ "Disabled"),
            insecure_work = case_when(employed == 1 & 
                                        ((INECAC05 == 2 & soc_1d %in% c(6,8,9)) |
-                                       JOBTYP == 1 |
-                                       SELF1 == 1 |
-                                       SELF2 == 1 |
-                                       SELF3 == 1 |
-                                       SELF4 == 1)  ~ 1,
-                                     employed == 0|
+                                          JOBTYP == 1 |
+                                          SELF1 == 1 |
+                                          SELF2 == 1 |
+                                          SELF3 == 1 |
+                                          SELF4 == 1)  ~ 1,
+                                     employed == 0 |
+                                       is.na(employed) |
                                        INECAC05<0 | 
                                        INECAC05 == 34 |
                                        (INECAC05 == 2 & soc_1d<0) |
-                                       JOBTYP<0 ~ -9,
+                                       JOBTYP<0 ~ NA_real_,
                                      TRUE ~ 0)
-           ) 
+    ) 
   return(dta_adj)
 }
 
@@ -216,14 +217,14 @@ svyglm_regress <- function(reg_model_vars=NULL,
     
     # Construct a formula object
     reg_form <- formula_helper(outcome_var = "employed",
-                                      formula_vars = c(reg_model_vars,"manchester_resident","birmingham_resident"))
+                               formula_vars = c(reg_model_vars,"manchester_resident","birmingham_resident"))
     
   } else {
     
     # Construct a formula object
     reg_form <- formula_helper(outcome_var = "employed",
                                formula_vars = reg_model_vars)
-    }
+  }
   
   reg_emp_results <- svyglm(design=design,
                             formula = reg_form)
@@ -245,7 +246,7 @@ summarise_econ_stat <- function(data = NULL,
   
   checkmate::assert_logical(adult_only)
   checkmate::assert_logical(ldn_only)
-  checkmate::assert_choice(econ_status, c("unemployed","employed","inactive"))
+  checkmate::assert_choice(econ_status, c("unemployed","employed","inactive","insecure_work"))
   checkmate::assert_vector(var_vector)
   
   # Ensure correct filters are on
@@ -282,7 +283,22 @@ summarise_econ_stat <- function(data = NULL,
   # Merge two datasets
   outtab <- subtab %>% 
     left_join(subtab_count,
-              by=c((all_of(var_vector))))
+              by=var_vector)
   
   return(outtab)
+}
+
+# Function to delist the results, create ID column
+delist_results <- function(list_nm = NULL,
+                           var_vector = NULL) {
+  
+  new_df <- bind_rows(list_nm,
+                      .id="dataset") %>%  
+    remove_rownames() %>% 
+    unite("byvar_characteristic",all_of(var_vector), sep='_',remove = FALSE) %>% 
+    mutate(data_year = as.numeric(paste0("20",str_extract(dataset,"\\d{2}"))),
+           id = paste0(data_year,"_",byvar_characteristic)) %>%
+    relocate(id)
+  
+  return(new_df)
 }
