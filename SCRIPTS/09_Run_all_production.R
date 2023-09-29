@@ -2,17 +2,8 @@
 ###  RUN ALL SCRIPTS ----
 #_______________________________________________________________________________
   
-  # Put in your Nomis API key (NB: THE BELOW IS AMMAR'S KEY!!)
-  Sys.setenv(NOMIS_API_KEY = "0x01a88c6659d20042f087de2e585cdf3a07708983")
-
-  # ACTION: set whether to re-download all datasets, even if already exists
-  redownload_all <- FALSE
-
   # HERE package needed for dynamic pathfinding
   library("here") 
-  
-  ## If running on whole population or parents, should generally be FALSE
-  whole_pop_output <- FALSE
 
 #...............................................................................
 #### Run Setup scripts ----
