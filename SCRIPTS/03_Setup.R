@@ -12,14 +12,12 @@
 
 
 # Define which variables to transform to labels, which are automatically kept for analysis
-label_var_vec <- c("SEX","GOVTOF","ILODEFR","BENFTS","INDS07M",
-                   "lev_quals","RELIG11","ETHUKEUL")
+label_var_vec <- c("SEX","GOVTOF","ILODEFR")
 
 # Define which further variables to keep for analysis to save memory, specifically custom vars or numeric ones 
 analysis_var_vec <- c("AGE","adult1664","weight_val",
                       "employed","london_resident","ethnicity",
-                      "inactive","unemployed","disability",
-                      "age_group","wfh_d","pt_d","insecure_work")
+                      "inactive","unemployed","age_group","age_group2")
 
 # Prepare all datasets by:
 # 1 creating consistent variable across datasets for those that otherwise vary by year (e.g. SOC)
@@ -29,13 +27,16 @@ analysis_var_vec <- c("AGE","adult1664","weight_val",
 # 5 keeping the selected variables from above
 # 6 Create a custom ID ref, since some datasets just have NAs
 
+# No need for aligning quals and soc
 dataset_list_adj <- dataset_list %>% 
   lapply(align_vars) %>% 
   lapply(convert_to_label,var_vec=label_var_vec) %>% 
   lapply(haven::zap_labels) %>% 
   lapply(recode_dta) %>% 
   lapply(select,all_of(c(analysis_var_vec,paste(label_var_vec,"_label",sep="")))) %>% 
-  lapply(create_id_ref)
+  lapply(create_id_ref) %>% 
+  lapply(filter,!is.na(weight_val))
+
 
 # To save space, remove original dataset list
 #rm(dataset_list)
