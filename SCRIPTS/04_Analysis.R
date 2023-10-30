@@ -17,6 +17,9 @@ survey_design_blackother <- survey_design_full %>%
                                                is.na(ethnicity) ~ NA_character_,
                                                TRUE ~ "All other ethnicities")))
 
+# Note: where age is characteristic, set adult_only=FALSE to include everybody
+# But if not, set to TRUE to only use those aged 16-64
+
 # Run for sex*age group
 demog_vars_sex_age <- c("SEX_label","age_group")
 
@@ -61,7 +64,7 @@ demog_vars_sex_eth <- c("SEX_label","ethnicity")
 emp_rates_sex_eth <- lapply(survey_design_blackother,
                             summarise_econ_stat,
                             econ_status = "employed",
-                            adult_only = F,
+                            adult_only = T,
                             ldn_only = F,
                             var_vector = demog_vars_sex_eth) %>% 
   delist_results(var_vector = demog_vars_sex_eth)
@@ -69,7 +72,7 @@ emp_rates_sex_eth <- lapply(survey_design_blackother,
 emp_rates_sex_eth_ldn <- lapply(survey_design_blackother,
                                 summarise_econ_stat,
                                 econ_status = "employed",
-                                adult_only = F,
+                                adult_only = T,
                                 ldn_only = T,
                                 var_vector = demog_vars_sex_eth) %>% 
   delist_results(var_vector = demog_vars_sex_eth)
