@@ -21,18 +21,27 @@ import_save_dta <- function(dta_num=NA,
   temp_year <- paste0("20",gsub("(\\w{4}_\\w{2})(\\d{2})(.*)","\\2", dataset_nm_vector[dta_num]))
   temp_name <- regmatches(dataset_nm_vector[dta_num],regexpr("\\w{4}_\\w{2}\\d{2}",dataset_nm_vector[dta_num]))
   
+  # Note: very old datasets have lowercase names, change to uppercase
+  
   if (loadRDS==FALSE) {
     if (sav_dat==FALSE) { #if tabulated data
       temp_dta <- read.table(file = paste0(INPUT,"\\",dataset_nm_vector[dta_num],".tab"),
-                             header = TRUE) 
+                             header = TRUE) %>% 
+        rename_with(toupper)
+        
     }
     else { #otherwise load SPSS datasets
-      temp_dta <-  read_sav(paste0(INPUT,"\\",dataset_nm_vector[dta_num],".sav"))
+      temp_dta <-  read_sav(paste0(INPUT,"\\",dataset_nm_vector[dta_num],".sav")) %>% 
+        rename_with(toupper)
     }
     
     # Save relevant weight in own column 
     if (str_to_lower(aps_lfs)=="aps") {
-      if (temp_year %in% c(2012:2019)) {
+      if (temp_year < 2012) {
+        temp_dta <- temp_dta %>%
+          mutate(weight_val = PWTA14,
+                 weight_var = "PWTA14")
+      } else if (temp_year %in% c(2012:2019)) {
         temp_dta <- temp_dta %>%
           mutate(weight_val = PWTA18,
                  weight_var = "PWTA18")
@@ -64,6 +73,7 @@ import_save_dta <- function(dta_num=NA,
     # Save R data and allow loading
     saveRDS(temp_dta,
             file=paste0(RDATA,temp_name,".rds"))
+    
   } else { #otherwise load dataset directly
     temp_dta <- readRDS(file=paste0(RDATA,temp_name,".rds"))
   }
@@ -83,15 +93,9 @@ recode_dta <- function(dta=NA) #in case we want sumstats on whole pop
   
   # Change data
   dta_adj <- dta %>% 
-    mutate(ethnicity = case_when(ETHUKEUL == 1 ~ "White",
-                                 ETHUKEUL %in% c(2,3,4,5,6,7,8,9) ~ "BAME",
-                                 ETHUKEUL == -8 ~ "No answer",
-                                 ETHUKEUL == -9 ~ "NA"),
-           quarter_response = case_when(IOUTCOME %in% c(1,2) ~ "Yes",
+    mutate(quarter_response = case_when(IOUTCOME %in% c(1,2) ~ "Yes",
                                         IOUTCOME == 6 ~ "No",
                                         TRUE ~ "NA"),
-           industry_job = case_when(INDS07M %in% c(18,19) ~ 18, # group R arts and S other services, together
-                                    TRUE ~ INDS07M),
            employed=case_when(ILODEFR==1 ~ 1,
                               is.na(ILODEFR) | ILODEFR %in% c(-9,-8,4) ~ NA_real_,
                               TRUE ~ 0),
@@ -110,33 +114,18 @@ recode_dta <- function(dta=NA) #in case we want sumstats on whole pop
                                  TRUE ~ 0),
            london_resident = case_when(GOVTOF == 8 ~ 1,
                                        TRUE ~ 0),
-           age_group = case_when(between(AGE,16,24) ~ "Aged 16-24",
+           age_group = case_when(between(AGE,16,19) ~ "Aged 16-19",
+                                 between(AGE,20,24) ~ "Aged 20-24",
                                  between(AGE,25,34) ~ "Aged 25-34",
                                  between(AGE,35,49) ~ "Aged 35-49",
                                  between(AGE,50,64) ~ "Aged 50-64",
-                                 AGE>64 ~ "Age 65+"),
-           wfh_d = case_when(HOME %in% c(1,2,3) ~ 1,
-                             HOME == 4 ~ 0,
-                             TRUE ~ NA_real_),
-           pt_d = case_when(FTPT %in% c(1,3) ~ 0, #if working full-time
-                            FTPT %in% c(2,4) ~ 1, #working part time
-                            TRUE ~ NA_real_),
-           disability = case_when(DISEA == 2 | is.na(DISEA) ~ "Not disabled",
-                                  DISEA == 1 ~ "Disabled"),
-           insecure_work = case_when(employed == 1 & 
-                                       ((INECAC05 == 2 & soc_1d %in% c(6,8,9)) |
-                                          JOBTYP == 1 |
-                                          SELF1 == 1 |
-                                          SELF2 == 1 |
-                                          SELF3 == 1 |
-                                          SELF4 == 1)  ~ 1,
-                                     employed == 0 |
-                                       is.na(employed) |
-                                       INECAC05<0 | 
-                                       INECAC05 == 34 |
-                                       (INECAC05 == 2 & soc_1d<0) |
-                                       JOBTYP<0 ~ NA_real_,
-                                     TRUE ~ 0)
+                                 AGE>64 ~ "Aged 65+"),
+           age_group2 = case_when(between(AGE,16,29) ~ "Aged 16-29",
+                                 between(AGE,30,39) ~ "Aged 30-39",
+                                 between(AGE,40,49) ~ "Aged 40-49",
+                                 between(AGE,50,59) ~ "Aged 50-59",
+                                 between(AGE,60,64) ~ "Aged 60-64",
+                                 AGE>64 ~ "Aged 65+")
     ) 
   return(dta_adj)
 }
@@ -171,28 +160,56 @@ align_vars <- function(dta=NULL){
     group_by(dta_year) %>% 
     filter(row_number()==1) %>% 
     pull(dta_year)
+  # 
+  # # First for quals
+  # if (dta_year_check>=2022) {
+  #   quals_var <- "HIQUL22D"
+  # } else if (between(dta_year_check,2015,2021)) {
+  #   quals_var <- "HIQUL15D"
+  # }
+  # 
+  # # For occupations
+  # if (dta_year_check>=2021) {
+  #   soc_var_1d <- "SC20MMJ"
+  #   soc_var_3d <- "SC20MMN"
+  # } else if (between(dta_year_check,2015,2020)) {
+  #   soc_var_1d <- "SC10MMJ"
+  #   soc_var_3d <- "SC10MMN"
+  # }
+  # 
+  # dta_convert <- dta %>% 
+  #   mutate(lev_quals = !!sym(quals_var),
+  #          soc_1d = !!sym(soc_var_1d),
+  #          soc_3d = !!sym(soc_var_3d))
   
-  # First for quals
-  if (dta_year_check>=2022) {
-    quals_var <- "HIQUL22D"
-  } else if (between(dta_year_check,2015,2021)) {
-    quals_var <- "HIQUL15D"
+  # simple version for this task
+  # ethnicity
+  if (dta_year_check<2010) {
+    
+    dta_convert <- dta %>% 
+      mutate(ethnicity = case_when(ETH01 == 1 ~ "White",
+                                   ETH01 == 2 ~ "Mixed ethnicity",
+                                   ETH01 == 4 ~ "Black or Black British",
+                                   ETH01 %in% c(5,6) ~ "Other ethnic group",
+                                   ETH01 == 3 & ETHAS %in% c(1) ~ "Indian", 
+                                   ETH01 == 3 & ETHAS %in% c(2,3) ~ "Pakistani/Bangladeshi",
+                                   ETH01 == 3 & ETHAS %in% c(4) ~ "Other ethnic group",
+                                   ETH01 == -8 ~ "No answer",
+                                   ETH01 == -9 ~ "NA"))
+  } else {
+    
+    dta_convert <- dta %>% 
+      mutate(ethnicity = case_when(ETHUKEUL == 1 ~ "White",
+                                   ETHUKEUL == 3 ~ "Indian",
+                                   ETHUKEUL %in% c(4,5) ~ "Pakistani/Bangladeshi",
+                                   ETHUKEUL == 8 ~ "Black or Black British",
+                                   ETHUKEUL == 2 ~ "Mixed ethnicity",
+                                   ETHUKEUL %in% c(6,7,9) ~ "Other ethnic group",
+                                   ETHUKEUL == -8 ~ "No answer",
+                                   ETHUKEUL == -9 ~ "NA"))
+    
+  
   }
-  
-  # For occupations
-  if (dta_year_check>=2021) {
-    soc_var_1d <- "SC20MMJ"
-    soc_var_3d <- "SC20MMN"
-  } else if (between(dta_year_check,2015,2020)) {
-    soc_var_1d <- "SC10MMJ"
-    soc_var_3d <- "SC10MMN"
-  }
-  
-  dta_convert <- dta %>% 
-    mutate(lev_quals = !!sym(quals_var),
-           soc_1d = !!sym(soc_var_1d),
-           soc_3d = !!sym(soc_var_3d))
-  
   return(dta_convert)
 }
 
